@@ -14,30 +14,24 @@ int main(){
     initscr();
 
 
-    // moves the cursor to a location on screen
-    move(10, 5);
+    int h, w, y, x;
+    h = 10;
+    w = h * 2;
+    y = x = 0;
 
-    printw("Hello world\n");
+    // creating a new window
+    WINDOW* win = newwin(h, w, y, x);
 
-    // refresh the screen to match whats in memory
+    // we need to refresh the screen for the window
     refresh();
 
-    // get user input, returns this key
-    int key = getch();
+    // outline the window in a box
+    box(win, 0, 0);
+    mvwprintw(win, 1, 1, "This is a box");
 
+    // refresh only our window
+    wrefresh(win);
 
-    // print in top left
-    move(0, 0);
-    printw("got key %c with code %d\n", key, key);
-
-
-    // move and print in 1 go
-    mvprintw(5, 5, "This is some more text");
-
-    getch();
-
-    // clear the screen
-    clear();
     getch();
 
     // end ncurses
