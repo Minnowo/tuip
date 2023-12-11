@@ -4,9 +4,11 @@
 CFLAGS=-lncurses
 
 SRC_FILES=main.c
-OUT_FILE=rn
+OUT_FILE=rn.out
 
-all:
+all: main
+
+main: ${SRC_FILES}
 
 	${CC} ${SRC_FILES} -o${OUT_FILE} ${CFLAGS}
 
