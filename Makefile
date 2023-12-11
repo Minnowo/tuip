@@ -1,7 +1,7 @@
 
 
 
-CFLAGS=-lncurses
+CFLAGS=-lncurses -lform
 
 SRC_FILES=main.c
 OUT_FILE=rn.out
