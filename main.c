@@ -8,46 +8,48 @@
 
 
 
-int main(){
+static int _main(int argc, char** argv) {
+
+    if(!has_colors()) {
+        printw("Terminal does not support color");
+        getch();
+        return 1;
+    }
+
+    noecho();
+    start_color();
+
+    // define custom colors if supported
+    if(can_change_color()) {
+        init_color(COLOR_CYAN, 1, 100, 0);
+    }
+
+    int pair_id = 1;
+    init_pair(pair_id, COLOR_CYAN, COLOR_WHITE);
+    
+    attron(COLOR_PAIR(pair_id));
+    printw("this is some text");
+    attroff(COLOR_PAIR(pair_id));
+
+
+    getch();
+
+    return 0;
+}
+
+
+
+int main(int argc, char** argv){
+
+    int status;
 
     // init ncurses
     initscr();
 
-    // lets ctrl + c kill your thing
-    cbreak();
+    status = _main(argc, argv);
 
-    // takes only raw input, ctrl+c doesn't work
-    raw();
-
-    // makes typing not show up 
-    noecho();
-
-    int h, w, y, x;
-    h = 10;
-    w = h * 2;
-    y = x = 0;
-
-    // creating a new window
-    WINDOW* win = newwin(h, w, y, x);
-
-    // we need to refresh the screen for the window
-    refresh();
-
-    // outline the window in a box
-    box(win, 'a', 0);
-    mvwprintw(win, 1, 1, "This is a box");
-
-    // refresh only our window
-    wrefresh(win);
-
-    getch();
-    getch();
-    getch();
-    getch();
-
-    // end ncurses
     endwin();
 
 
-    return 0;
+    return status;
 }
