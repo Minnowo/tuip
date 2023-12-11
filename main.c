@@ -13,6 +13,14 @@ int main(){
     // init ncurses
     initscr();
 
+    // lets ctrl + c kill your thing
+    cbreak();
+
+    // takes only raw input, ctrl+c doesn't work
+    raw();
+
+    // makes typing not show up 
+    noecho();
 
     int h, w, y, x;
     h = 10;
@@ -26,12 +34,15 @@ int main(){
     refresh();
 
     // outline the window in a box
-    box(win, 0, 0);
+    box(win, 'a', 0);
     mvwprintw(win, 1, 1, "This is a box");
 
     // refresh only our window
     wrefresh(win);
 
+    getch();
+    getch();
+    getch();
     getch();
 
     // end ncurses
