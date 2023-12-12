@@ -297,6 +297,8 @@ static int _main(int argc, char **argv) {
         free(list_items[i]);
     }
 
+    free(list_items);
+
     return 0;
 }
 
