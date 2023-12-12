@@ -1,15 +1,36 @@
 
 
-#include <curses.h>
-#include <form.h>
 
 // https://pubs.opengroup.org/onlinepubs/7908799/xcurses/curses.h.html
+#include <curses.h>
 #include <ncurses.h>
+#include <form.h>
+
+#include <stdarg.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <errno.h>
 
 
 #define MOD(a, b) ((((a) % (b)) + (b)) % (b))
 
+#define KEY_ESCAPE 27
+#define KEY_BACKSPACE_2 127
+
+char* estrdup(const char *s)
+{
+	size_t n = strlen(s) + 1;
+
+	char *d = malloc(n);
+
+	if (d == NULL)
+		fprintf(stderr, "Could not malloc sizeof(%zu)\n", n);
+
+	memcpy(d, s, n);
+
+	return d;
+}
 
 
 void draw_line(WINDOW* win, int attr, size_t w, size_t y, char* text) {
@@ -20,82 +41,103 @@ void draw_line(WINDOW* win, int attr, size_t w, size_t y, char* text) {
     wattroff(win, COLOR_PAIR(attr));
 }
 
-int rename_dialog(WINDOW *win, int width, int height, char *to_rename) {
+int rename_dialog(WINDOW *win, int w_, int h_, int x_, int y_, char *to_rename, char** newname) {
 
-    WINDOW *win_form = derwin(win, 20, 78, 3, 1);
+    int w, h, x, y;
+
+    w = w_ / 2;
+    h = h_ / 2;
+    x = w_ / 2 - w / 2;
+    y = h_ / 2 - h / 2;
+
+    WINDOW *win_form = derwin(win, h, w, y, x);
+    keypad(win_form, TRUE);
+
     FIELD *field[2];
 
-    field[0] = new_field(1,          // height
-                         width,      // width
-                         height - 2, // start y
-                         1,          // start x
-                         0,          // offscreen rows
-                         0           // offscreen cols
+    field[0] = new_field(1,                                 // height
+                         w - 5,                             // width
+                         getbegy(win_form) + h / 2 + h / 4, // start y
+                         getbegx(win_form) + 2,             // start x
+                         0,                                 // offscreen rows
+                         0                                  // offscreen cols
     );
     field[1] = NULL;
 
-    // Print a line for the option
+    // // Print a line for the option
     set_field_back(field[0], A_UNDERLINE);
 
-    // Don't go to next field when this
+    // // Don't go to next field when this
     field_opts_off(field[0], O_AUTOSKIP);
 
 	set_field_opts(field[0], O_VISIBLE | O_PUBLIC | O_EDIT | O_ACTIVE);
+    set_field_buffer(field[0], 0, to_rename);
+
 
     FORM *form = new_form(field);
+
+    int rows, cols;
+	scale_form(form, &rows, &cols);
+
+    set_form_win(form, win_form);
+    set_form_sub(form, derwin(win_form, rows, cols, 2, 2));
+
     post_form(form);
 
-	refresh();
-
-    box(win_form, 0, 0);
+    touchwin(win_form);
+    noecho();
 
     int run = 1;
     int ret = 0;
 
-
     do {
 
-        int ch = getch();
+        box(win_form, 0, 0);
+        mvwprintw(win_form, 1, 1, "Rename Item");
+        wrefresh(win_form);
+
+        int ch = wgetch(win_form);
+
         switch (ch) {
+
+            case KEY_ESCAPE:
+                run = 0;
+                ret = 0;
+                break;
+
             case '\n':
             case KEY_ENTER:
                 run = 0;
                 ret = 1;
+
+                form_driver(form, REQ_VALIDATION);
+
+                char* r = strdup(field_buffer(field[0], 0));
+
+                if (r != NULL) {
+                    *newname = r;
+                } else {
+                    ret = 0;
+                }
+
                 break;
 
-            // Delete the char before cursor
             case KEY_BACKSPACE:
-            case 127:
+            case KEY_BACKSPACE_2:
                 form_driver(form, REQ_DEL_PREV);
                 break;
 
-            // Delete the char under the cursor
             case KEY_DC:
                 form_driver(form, REQ_DEL_CHAR);
                 break;
 
-            case KEY_DOWN:
-                /* Go to next field */
-                form_driver(form, REQ_NEXT_FIELD);
-                /* Go to the end of the present buffer */
-                /* Leaves nicely at the last character */
-                form_driver(form, REQ_END_LINE);
-                break;
-            case KEY_UP:
-                /* Go to previous field */
-                form_driver(form, REQ_PREV_FIELD);
-                form_driver(form, REQ_END_LINE);
-                break;
             default:
-                /* If this is a normal character, it gets */
-                /* Printed				  */
                 form_driver(form, ch);
                 break;
         }
 
     } while (run);
 
-        /* Un post form and free the memory */
 	unpost_form(form);
 	free_form(form);
 	free_field(field[0]);
@@ -118,6 +160,14 @@ static int _main(int argc, char **argv) {
         return 1;
     }
 
+    argc--;
+    argv++;
+
+    char** list_items = malloc(argc * sizeof(char*));
+
+    for (int i = 0; i < argc; i++) {
+        list_items[i] = estrdup(argv[i]);
+    }
 
     int scroll_height = 15;
     int bottom_height = 5;
@@ -129,14 +179,13 @@ static int _main(int argc, char **argv) {
     width = 100;
     starty = (LINES - height) / 2; /* Calculating for a center placement */
     startx = (COLS - width) / 2;   /* of the window		*/
-    win = newwin(height, width, starty, startx);
-
+    win = subwin(stdscr, height, width, starty, startx);
 
     noecho();
     start_color();	
-    nodelay(stdscr, TRUE);
+    // nodelay(stdscr, TRUE);
 	keypad(stdscr, TRUE);
-	halfdelay(5);
+	// halfdelay(5);
 
 
     #define white_black 1
@@ -144,8 +193,6 @@ static int _main(int argc, char **argv) {
     init_pair(white_black, COLOR_WHITE, COLOR_BLACK);
     init_pair(black_white, COLOR_BLACK, COLOR_WHITE);
 
-    argc--;
-    argv++;
 
     int pick = 1;
     int pos = 0;
@@ -173,20 +220,26 @@ static int _main(int argc, char **argv) {
                 attr = black_white;
             }
 
-            draw_line(win, attr, width - 2, i + 2, argv[i]);
+            draw_line(win, attr, width - 2, i + 2, list_items[i]);
         }
 
         box(win, 0, 0);
         wrefresh(win);
 
         int c = wgetch(win);
+        char* newname;
 
         switch (c) {
 
         case '\n':
         case KEY_ENTER:
 
-            rename_dialog(win, width, height, argv[pos]);
+            if (rename_dialog(win, width, height, startx, starty + height,
+                              list_items[pos], &newname)) {
+
+                free(list_items[pos]);
+                list_items[pos] = newname;
+            }
 
             break;
 
@@ -238,6 +291,11 @@ static int _main(int argc, char **argv) {
     } while (pick);
 
     delwin(win);
+
+
+    for(int i = 0; i < argc; i++) {
+        free(list_items[i]);
+    }
 
     return 0;
 }
