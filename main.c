@@ -2,7 +2,9 @@
 
 
 // https://pubs.opengroup.org/onlinepubs/7908799/xcurses/curses.h.html
+#include <ctype.h>
 #include <curses.h>
+#include <locale.h>
 #include <ncurses.h>
 #include <form.h>
 
@@ -11,6 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <unistd.h>
 
 
 #define MOD(a, b) ((((a) % (b)) + (b)) % (b))
@@ -32,6 +35,43 @@ char* estrdup(const char *s)
 	return d;
 }
 
+static char* trim_whitespaces(char *str)
+{
+	char *end;
+
+	// trim leading space
+	while(isspace(*str))
+		str++;
+
+	if(*str == 0) // all spaces?
+		return str;
+
+	// trim trailing space
+	end = str + strnlen(str, 128) - 1;
+
+	while(end > str && isspace(*end))
+		end--;
+
+	// write new null terminator
+	*(end+1) = '\0';
+
+	return str;
+}
+
+bool rename_file(const char *path, const char *newpath) {
+
+        if (access(path, R_OK) != 0) {
+
+            fprintf(
+                stderr,
+                "The file %s does not exist or is missing read permission\n",
+                path);
+
+            return false;
+        }
+
+        return rename(path, newpath) == 0;
+}
 
 void draw_line(WINDOW* win, int attr, size_t w, size_t y, char* text) {
 
@@ -96,6 +136,7 @@ int rename_dialog(WINDOW *win, int w_, int h_, int x_, int y_, char *to_rename, 
         mvwprintw(win_form, 1, 1, "Rename Item");
         wrefresh(win_form);
 
+        pos_form_cursor(form);
         int ch = wgetch(win_form);
 
         switch (ch) {
@@ -112,7 +153,7 @@ int rename_dialog(WINDOW *win, int w_, int h_, int x_, int y_, char *to_rename, 
 
                 form_driver(form, REQ_VALIDATION);
 
-                char* r = strdup(field_buffer(field[0], 0));
+                char* r = strdup(trim_whitespaces(field_buffer(field[0], 0)));
 
                 if (r != NULL) {
                     *newname = r;
@@ -237,8 +278,10 @@ static int _main(int argc, char **argv) {
             if (rename_dialog(win, width, height, startx, starty + height,
                               list_items[pos], &newname)) {
 
-                free(list_items[pos]);
-                list_items[pos] = newname;
+                if (rename_file(list_items[pos], newname)) {
+                    free(list_items[pos]);
+                    list_items[pos] = newname;
+                }
             }
 
             break;
@@ -305,6 +348,8 @@ static int _main(int argc, char **argv) {
 int main(int argc, char **argv) {
 
     int status;
+
+    setlocale(LC_ALL, "");
 
     // init ncurses
     initscr();

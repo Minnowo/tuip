@@ -1,5 +1,18 @@
 #!/bin/sh
 
 
+make
+
+
+files=()
+
+for i in *; do
+
+    files+=("$i")
+
+done
+
 a=$(ls)
-./rn.out $a
+
+echo "${files[@]}"
+./rn.out "${files[@]}"
