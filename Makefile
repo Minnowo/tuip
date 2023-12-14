@@ -3,7 +3,7 @@
 
 CFLAGS=-lncurses -lform
 
-SRC_FILES=main.c
+SRC_FILES=main.c curses_text_buffer.c
 OUT_FILE=rn.out
 
 all: main

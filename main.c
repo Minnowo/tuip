@@ -9,17 +9,26 @@
 #include <form.h>
 
 #include <stdarg.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
 
+#include "curses_text_buffer.h"
+#include "utf8.h"
+
 
 #define MOD(a, b) ((((a) % (b)) + (b)) % (b))
 
 #define KEY_ESCAPE 27
 #define KEY_BACKSPACE_2 127
+
+#define NCURSES_CTRL_MASK 0x1F
+
+#define white_black 1
+#define black_white 2
 
 char* estrdup(const char *s)
 {
@@ -81,7 +90,8 @@ void draw_line(WINDOW* win, int attr, size_t w, size_t y, char* text) {
     wattroff(win, COLOR_PAIR(attr));
 }
 
-int rename_dialog(WINDOW *win, int w_, int h_, int x_, int y_, char *to_rename, char** newname) {
+int rename_dialog(WINDOW *win, int w_, int h_, int x_, int y_, char *to_rename,
+                  char **newname) {
 
     int w, h, x, y;
 
@@ -93,53 +103,66 @@ int rename_dialog(WINDOW *win, int w_, int h_, int x_, int y_, char *to_rename, 
     WINDOW *win_form = derwin(win, h, w, y, x);
     keypad(win_form, TRUE);
 
-    FIELD *field[2];
+    int tw, th, tx, ty;
 
-    field[0] = new_field(1,                                 // height
-                         w - 5,                             // width
-                         getbegy(win_form) + h / 2 + h / 4, // start y
-                         getbegx(win_form) + 2,             // start x
-                         0,                                 // offscreen rows
-                         0                                  // offscreen cols
-    );
-    field[1] = NULL;
-
-    // // Print a line for the option
-    set_field_back(field[0], A_UNDERLINE);
-
-    // // Don't go to next field when this
-    field_opts_off(field[0], O_AUTOSKIP);
-
-	set_field_opts(field[0], O_VISIBLE | O_PUBLIC | O_EDIT | O_ACTIVE);
-    set_field_buffer(field[0], 0, to_rename);
-
-
-    FORM *form = new_form(field);
-
-    int rows, cols;
-	scale_form(form, &rows, &cols);
-
-    set_form_win(form, win_form);
-    set_form_sub(form, derwin(win_form, rows, cols, 2, 2));
-
-    post_form(form);
+    tw = w - 5;
+    th = 1;
+    tx = 2;
+    ty = h / 2;
 
     touchwin(win_form);
-    noecho();
 
     int run = 1;
     int ret = 0;
 
+    size_t len = strlen(to_rename);
+
+    text_buffer_t *text_buf = tb_malloc(tw + 1);
+
+    tb_set_contents(text_buf, to_rename, len);
+
     do {
 
-        box(win_form, 0, 0);
-        mvwprintw(win_form, 1, 1, "Rename Item");
-        wrefresh(win_form);
+            box(win_form, 0, 0);
+            mvwprintw(win_form, 1, 1, "Rename Item");
 
-        pos_form_cursor(form);
-        int ch = wgetch(win_form);
 
-        switch (ch) {
+        /*
+            for (int i = 0, c = 0; i < text_buf->end_pos;) {
+
+                uint32_t utf8 = utf8_byte_count(text_buf->buffer + i);
+                c++;
+
+                if(utf8 == 0) {
+                    i++;
+                    continue;
+                }
+
+                wmove(win_form, ty, tx+i);
+
+                if (i == text_buf->cursor_pos || c == text_buf->cursor_pos_utf8) {
+                    wattron(win_form, COLOR_PAIR(black_white));
+                    waddnstr(win_form, text_buf->buffer + i, utf8);
+                    wattroff(win_form, COLOR_PAIR(black_white));
+                }
+                else {
+                    waddnstr(win_form, text_buf->buffer + i, utf8);
+                }
+
+                i += utf8;
+            }
+        */
+
+            for (int i = 0; i < text_buf->length; i++)
+                mvwprintw(win_form, ty, tx + i, " ");
+            mvwprintw(win_form, ty, tx, "%s", text_buf->buffer);
+            wmove(win_form, ty, tx + text_buf->cursor_pos);
+
+            wrefresh(win_form);
+
+            int ch = wgetch(win_form);
+
+            switch (ch) {
 
             case KEY_ESCAPE:
                 run = 0;
@@ -151,37 +174,46 @@ int rename_dialog(WINDOW *win, int w_, int h_, int x_, int y_, char *to_rename, 
                 run = 0;
                 ret = 1;
 
-                form_driver(form, REQ_VALIDATION);
+                char* r = trim_whitespaces(text_buf->buffer);
 
-                char* r = strdup(trim_whitespaces(field_buffer(field[0], 0)));
-
-                if (r != NULL) {
-                    *newname = r;
+                if (r != NULL && *r != '\0') {
+                    *newname = strdup(r);
                 } else {
                     ret = 0;
                 }
 
                 break;
 
+            case 'h' & NCURSES_CTRL_MASK:
+                tb_move_cur_left_word(text_buf);
+                break;
+            case KEY_LEFT:
+                tb_move_cur_left(text_buf);
+                break;
+
+            case 'l' & NCURSES_CTRL_MASK:
+                tb_move_cur_right_word(text_buf);
+                break;
+            case KEY_RIGHT:
+                tb_move_cur_right(text_buf);
+                break;
+
             case KEY_BACKSPACE:
             case KEY_BACKSPACE_2:
-                form_driver(form, REQ_DEL_PREV);
+                tb_remove_at_cur_ch(text_buf);
                 break;
 
             case KEY_DC:
-                form_driver(form, REQ_DEL_CHAR);
                 break;
 
             default:
-                form_driver(form, ch);
+                tb_add_at_cur_ch(text_buf, ch);
                 break;
-        }
+            }
 
     } while (run);
 
-	unpost_form(form);
-	free_form(form);
-	free_field(field[0]);
+    tb_free(text_buf);
 
     delwin(win_form);
     return ret;
@@ -229,8 +261,6 @@ static int _main(int argc, char **argv) {
 	// halfdelay(5);
 
 
-    #define white_black 1
-    #define black_white 2
     init_pair(white_black, COLOR_WHITE, COLOR_BLACK);
     init_pair(black_white, COLOR_BLACK, COLOR_WHITE);
 
