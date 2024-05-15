@@ -1,4 +1,12 @@
 
-This is a TUI program using ncurses to rename files.
+# tuip
 
-If a file has a name which you cannot type in the CLI, the goal of this tool would be to let you rename it via a TUI. This is working currently, but editing for UTF-8 really sucks.
+A tui-picker. 
+
+tuip lets you pick from a list of items on the terminal, and writes the selected option to `/tmp/tuip`.
+
+## Scripts
+
+See some shell scripts making use of this program:
+
+- `cdt`: A cd utility

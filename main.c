@@ -1,88 +1,78 @@
 
 
-
 // https://pubs.opengroup.org/onlinepubs/7908799/xcurses/curses.h.html
-#include <ctype.h>
 #include <curses.h>
 #include <locale.h>
 #include <ncurses.h>
-#include <form.h>
 
-#include <stdarg.h>
-#include <stdint.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <errno.h>
 #include <unistd.h>
 
-#include "curses_text_buffer.h"
-#include "utf8.h"
 
-
-#define MOD(a, b) ((((a) % (b)) + (b)) % (b))
-
-#define KEY_ESCAPE 27
-#define KEY_BACKSPACE_2 127
-
-#define NCURSES_CTRL_MASK 0x1F
-
+#define FALLTHROUGH 
 #define white_black 1
 #define black_white 2
+#define OUTPUT_FILE "/tmp/tuip"
 
+
+/**
+ * malloc n bytes or exit
+ */
+void* emalloc(size_t n) {
+
+    void* m = malloc(n);
+
+    if(m == NULL) {
+
+		fprintf(stderr, "%s\n", strerror(errno));
+
+        exit(1);
+    }
+
+    return m;
+}
+
+
+/**
+ * duplicate the given string or exit
+ */
 char* estrdup(const char *s)
 {
-	size_t n = strlen(s) + 1;
+	size_t n = strlen(s);
 
-	char *d = malloc(n);
-
-	if (d == NULL)
-		fprintf(stderr, "Could not malloc sizeof(%zu)\n", n);
+	char *d = emalloc(n + 1);
 
 	memcpy(d, s, n);
+
+    d[n] = 0;
 
 	return d;
 }
 
-static char* trim_whitespaces(char *str)
-{
-	char *end;
 
-	// trim leading space
-	while(isspace(*str))
-		str++;
+/**
+ * write the given string to the output file
+ */
+void write_output_str(const char* s) {
 
-	if(*str == 0) // all spaces?
-		return str;
+    FILE *fp = fopen(OUTPUT_FILE, "w");
 
-	// trim trailing space
-	end = str + strnlen(str, 128) - 1;
+    if (fp != NULL)
+    {
+        fputs(s, fp);
 
-	while(end > str && isspace(*end))
-		end--;
-
-	// write new null terminator
-	*(end+1) = '\0';
-
-	return str;
+        fclose(fp);
+    }
 }
 
-bool rename_file(const char *path, const char *newpath) {
 
-        if (access(path, R_OK) != 0) {
-
-            fprintf(
-                stderr,
-                "The file %s does not exist or is missing read permission\n",
-                path);
-
-            return false;
-        }
-
-        return rename(path, newpath) == 0;
-}
-
-void draw_line(WINDOW* win, int attr, size_t w, size_t y, char* text) {
+/**
+ * draw a line on the window using the given color
+ */
+void draw_line(WINDOW* win, int attr, size_t w, size_t y, const char* text) {
 
     wattron(win, COLOR_PAIR(attr));
     for (int i = 0; i < w; i++) mvwaddch(win, y, i + 1, ' ');
@@ -90,281 +80,171 @@ void draw_line(WINDOW* win, int attr, size_t w, size_t y, char* text) {
     wattroff(win, COLOR_PAIR(attr));
 }
 
-int rename_dialog(WINDOW *win, int w_, int h_, int x_, int y_, char *to_rename,
-                  char **newname) {
 
-    int w, h, x, y;
-
-    w = w_ / 2;
-    h = h_ / 2;
-    x = w_ / 2 - w / 2;
-    y = h_ / 2 - h / 2;
-
-    WINDOW *win_form = derwin(win, h, w, y, x);
-    keypad(win_form, TRUE);
-
-    int tw, th, tx, ty;
-
-    tw = w - 5;
-    th = 1;
-    tx = 2;
-    ty = h / 2;
-
-    touchwin(win_form);
-
-    int run = 1;
-    int ret = 0;
-
-    size_t len = strlen(to_rename);
-
-    text_buffer_t *text_buf = tb_malloc(tw + 1);
-
-    tb_set_contents(text_buf, to_rename, len);
-
-    do {
-
-            box(win_form, 0, 0);
-            mvwprintw(win_form, 1, 1, "Rename Item");
-
-
-        /*
-            for (int i = 0, c = 0; i < text_buf->end_pos;) {
-
-                uint32_t utf8 = utf8_byte_count(text_buf->buffer + i);
-                c++;
-
-                if(utf8 == 0) {
-                    i++;
-                    continue;
-                }
-
-                wmove(win_form, ty, tx+i);
-
-                if (i == text_buf->cursor_pos || c == text_buf->cursor_pos_utf8) {
-                    wattron(win_form, COLOR_PAIR(black_white));
-                    waddnstr(win_form, text_buf->buffer + i, utf8);
-                    wattroff(win_form, COLOR_PAIR(black_white));
-                }
-                else {
-                    waddnstr(win_form, text_buf->buffer + i, utf8);
-                }
-
-                i += utf8;
-            }
-        */
-
-            for (int i = 0; i < text_buf->length; i++)
-                mvwprintw(win_form, ty, tx + i, " ");
-            mvwprintw(win_form, ty, tx, "%s", text_buf->buffer);
-            wmove(win_form, ty, tx + text_buf->cursor_pos);
-
-            wrefresh(win_form);
-
-            int ch = wgetch(win_form);
-
-            switch (ch) {
-
-            case KEY_ESCAPE:
-                run = 0;
-                ret = 0;
-                break;
-
-            case '\n':
-            case KEY_ENTER:
-                run = 0;
-                ret = 1;
-
-                char* r = trim_whitespaces(text_buf->buffer);
-
-                if (r != NULL && *r != '\0') {
-                    *newname = strdup(r);
-                } else {
-                    ret = 0;
-                }
-
-                break;
-
-            case 'h' & NCURSES_CTRL_MASK:
-                tb_move_cur_left_word(text_buf);
-                break;
-            case KEY_LEFT:
-                tb_move_cur_left(text_buf);
-                break;
-
-            case 'l' & NCURSES_CTRL_MASK:
-                tb_move_cur_right_word(text_buf);
-                break;
-            case KEY_RIGHT:
-                tb_move_cur_right(text_buf);
-                break;
-
-            case KEY_BACKSPACE:
-            case KEY_BACKSPACE_2:
-                tb_remove_at_cur_ch(text_buf);
-                break;
-
-            case KEY_DC:
-                break;
-
-            default:
-                tb_add_at_cur_ch(text_buf, ch);
-                break;
-            }
-
-    } while (run);
-
-    tb_free(text_buf);
-
-    delwin(win_form);
-    return ret;
-}
-
-static int _main(int argc, char **argv) {
+/**
+ * the main loop
+ */
+int _main(int argc, char **argv) {
 
     if (argc <= 1) {
+
         printw("There was no input list!");
+
         getch();
+
         return 1;
     }
 
     if (!has_colors()) {
+
         printw("Terminal does not support color");
+
         getch();
+
         return 1;
     }
 
+    // copy the start arguments to show in the list
     argc--;
     argv++;
 
-    char** list_items = malloc(argc * sizeof(char*));
+    char** list_items = emalloc(argc * sizeof(char*));
 
-    for (int i = 0; i < argc; i++) {
+    for (int i = 0; i < argc; i++)
         list_items[i] = estrdup(argv[i]);
-    }
+    
 
-    int scroll_height = 15;
-    int bottom_height = 5;
+    int exit_status = 1;
 
-    WINDOW *win;
-	int startx, starty, width, height;
+    // setup the ncurses window
+    const int TOP_MARGIN = 2;
 
-    height = scroll_height + bottom_height;
-    width = 100;
-    starty = (LINES - height) / 2; /* Calculating for a center placement */
-    startx = (COLS - width) / 2;   /* of the window		*/
-    win = subwin(stdscr, height, width, starty, startx);
+    int width = getmaxx(stdscr);
+    int height = getmaxy(stdscr);
+    int hheight = height / 2;
+
+    int pos = 0;
+    int scroll = 0;
+
+    // create the subwindow
+    WINDOW* win = subwin(stdscr, height, width, 0, 0);
 
     noecho();
     start_color();	
-    // nodelay(stdscr, TRUE);
+    curs_set(0);
 	keypad(stdscr, TRUE);
-	// halfdelay(5);
-
 
     init_pair(white_black, COLOR_WHITE, COLOR_BLACK);
     init_pair(black_white, COLOR_BLACK, COLOR_WHITE);
 
+    for(;;) {
 
-    int pick = 1;
-    int pos = 0;
-    int scroll = 0;
+        // ensure window sizes are taken into account
+        width = getmaxx(stdscr);
+        height = getmaxy(stdscr);
+        hheight = height / 2;
 
-    do {
-        int rheight = scroll_height;
+        // draw the current index of the items
+        mvwprintw(win, 1, 1, "Index: %d   Scroll: %d\n", pos, scroll);
 
-        wmove(win, 1, 1);
-        wprintw(win, "Index: %d\n", pos);
+        // draw the list of items
+        for (int j = 0; j < height; j++) {
 
-        rheight--;
+            int i = scroll + j;
 
-        for (int j = 0, i = scroll; j < rheight; j++) {
-
-            i = scroll + j;
+            int attr = (i != pos) ? white_black : black_white;
 
             if (i >= argc) {
-                wprintw(win, "\n");
+
+                draw_line(win, attr, width, j + TOP_MARGIN, "");
+
                 continue;
             }
-            int attr = white_black;
 
-            if (i == pos) {
-                attr = black_white;
-            }
-
-            draw_line(win, attr, width - 2, i + 2, list_items[i]);
+            draw_line(win, attr, width, j + TOP_MARGIN, list_items[i]);
         }
 
+        // draw the white box outline
         box(win, 0, 0);
+
+        // update the screen
         wrefresh(win);
 
+
+        // handle user input
         int c = wgetch(win);
-        char* newname;
 
         switch (c) {
 
-        case '\n':
-        case KEY_ENTER:
+            case '\n':
+            case KEY_ENTER:
 
-            if (rename_dialog(win, width, height, startx, starty + height,
-                              list_items[pos], &newname)) {
+                // the user has chosen something!
+                write_output_str(list_items[pos]);
+                exit_status = 0;
 
-                if (rename_file(list_items[pos], newname)) {
-                    free(list_items[pos]);
-                    list_items[pos] = newname;
-                }
-            }
+                goto done;
 
-            break;
-
-        case 'q':
-        case 'Q':
-            pick = 0;
-            break;
+            case 'q':
+            case 'Q':
+                goto done;
 
 
-        case 'k':
-        case 'K':
-        case KEY_UP:
-            pos--;
-            if(pos < 0) {
+            case 'g':
+
                 pos = 0;
-            }
 
+                FALLTHROUGH;
 
-            if(pos > argc - rheight / 2) {
-            }
-            else if(pos > rheight / 2) {
-                scroll = pos - rheight/2;
-            } else {
-                scroll = 0;
-            }
+            case 'k':
+            case 'K':
+            case KEY_UP:
 
-            // scroll = MOD(scroll - 1, height);
-            break;
+                pos--;
 
-        case 'j':
-        case 'J':
-        case KEY_DOWN:
-            pos++;
-            if(pos >= argc) {
+                if(pos < 0) {
+                    pos = 0;
+                }
+
+                if(pos > hheight) {
+                    scroll = pos - hheight;
+                } else {
+                    scroll = 0;
+                }
+
+                break;
+
+            case 'G':
+
                 pos = argc - 1;
-            }
 
-            if(pos > argc - rheight / 2) {
-            }
-            else if(pos > rheight / 2) {
-                scroll = pos - rheight/2;
-            } else {
-                scroll = 0;
-            }
+                FALLTHROUGH;
+            
+            case 'j':
+            case 'J':
+            case KEY_DOWN:
 
-            break;
+                pos++;
+
+                if(pos >= argc) {
+                    pos = argc - 1;
+                }
+
+                if(pos > hheight) {
+                    scroll = pos - hheight;
+                } else {
+                    scroll = 0;
+                }
+
+                break;
         }
 
-    } while (pick);
+    }
 
+done:
+
+    // cleanup
     delwin(win);
-
 
     for(int i = 0; i < argc; i++) {
         free(list_items[i]);
@@ -372,16 +252,17 @@ static int _main(int argc, char **argv) {
 
     free(list_items);
 
-    return 0;
+    return exit_status;
 }
+
 
 int main(int argc, char **argv) {
 
     int status;
 
+    // fixes broken utf8 and unicode stuff
     setlocale(LC_ALL, "");
 
-    // init ncurses
     initscr();
 
     status = _main(argc, argv);
@@ -390,3 +271,4 @@ int main(int argc, char **argv) {
 
     return status;
 }
+
