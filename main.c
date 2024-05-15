@@ -1,10 +1,7 @@
 
-
-// https://pubs.opengroup.org/onlinepubs/7908799/xcurses/curses.h.html
-#include <curses.h>
-#include <locale.h>
 #include <ncurses.h>
 
+#include <locale.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -27,7 +24,7 @@ void* emalloc(size_t n) {
 
     if(m == NULL) {
 
-		fprintf(stderr, "%s\n", strerror(errno));
+        fprintf(stderr, "%s\n", strerror(errno));
 
         exit(1);
     }
@@ -41,15 +38,15 @@ void* emalloc(size_t n) {
  */
 char* estrdup(const char *s)
 {
-	size_t n = strlen(s);
+    size_t n = strlen(s);
 
-	char *d = emalloc(n + 1);
+    char *d = emalloc(n + 1);
 
-	memcpy(d, s, n);
+    memcpy(d, s, n);
 
     d[n] = 0;
 
-	return d;
+    return d;
 }
 
 
@@ -112,7 +109,7 @@ int _main(int argc, char **argv) {
 
     for (int i = 0; i < argc; i++)
         list_items[i] = estrdup(argv[i]);
-    
+
 
     int exit_status = 1;
 
@@ -132,7 +129,7 @@ int _main(int argc, char **argv) {
     noecho();
     start_color();	
     curs_set(0);
-	keypad(stdscr, TRUE);
+    keypad(stdscr, TRUE);
 
     init_pair(white_black, COLOR_WHITE, COLOR_BLACK);
     init_pair(black_white, COLOR_BLACK, COLOR_WHITE);
@@ -219,7 +216,7 @@ int _main(int argc, char **argv) {
                 pos = argc - 1;
 
                 FALLTHROUGH;
-            
+
             case 'j':
             case 'J':
             case KEY_DOWN:
