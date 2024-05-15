@@ -7,12 +7,22 @@ function cdt() {
     files=()
     files+=(..) # always include parent dir first
 
-    # get all directories
+    # makes */ not appear in the arrays
+    shopt -s nullglob
+
+    # hidden directories
+    for i in .*/; do
+
+        files+=("$i")
+    done
+
+    # other directories
     for i in */; do
 
         files+=("$i")
-
     done
+
+    shopt -u nullglob
 
     # run the tui to pick one
     if tuip "${files[@]}"; then
@@ -20,7 +30,7 @@ function cdt() {
         # get it's output choice
         path=$(cat /tmp/tuip)
 
-        echo $path
+        rm -f /tmp/tuip
 
         if [ -d "$path" ]; then 
 
